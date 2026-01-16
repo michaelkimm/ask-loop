@@ -6,7 +6,7 @@
 
 ```
 1. 이전 cycle 파일 하나만 읽음 (컨텍스트 최소화)
-2. 새로 언급된 기술만 MCP로 조사
+2. 미조사 기술만 MCP로 조사 (중복 조사 방지)
 3. 충분성 판단을 질문 전에 수행
 4. 충분하면 질문 없이 STEP 4로 직행 가능
 ```
@@ -45,14 +45,15 @@ investigated_techs = set()
    - 전체 히스토리가 아닌 직전 파일만 참조
    - 컨텍스트 비대화 방지
 
-2. **새로운 기술 스택 추출**
-   - 이전 cycle에서 새로 언급된 기술 식별
-   - `investigated_techs`에 없는 것만 조사
+2. **미조사 기술 식별**
+   - 이전 cycle에서 언급된 기술 중 아직 조사하지 않은 것 식별
+   - `investigated_techs`에 이미 있는 기술은 건너뜀
 
-3. **MCP 조건부 호출** (새 기술만)
+3. **MCP 조건부 호출** (미조사 기술만)
    ```python
-   new_techs = extract_techs(previous_cycle) - investigated_techs
-   for tech in new_techs:
+   mentioned_techs = extract_techs(previous_cycle)
+   uninvestigated = mentioned_techs - investigated_techs  # 중복 조사 방지
+   for tech in uninvestigated:
        # Context7: 공식 문서 조회
        # Grep.app: 구현 패턴 검색
        # Exa: 최신 트렌드, 주의사항
