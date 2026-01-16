@@ -31,32 +31,9 @@ investigated_techs = set()
 
 2. 사용자 응답 수신
 
-3. create_cycle 도구로 cycle_0.md 생성:
-   ```bash
-   cat << 'EOF' | python3 tools/create_cycle.py --session-id "$SESSION_ID" --cycle-number 0
-   # 요구사항 구체화 - Cycle 0
-
-   ## 이번 사이클 질문
-   초기 요구사항을 입력해주세요.
-
-   ## 사용자 응답
-   {사용자가 입력한 초기 요구사항}
-
-   ## 현재까지 구체화된 요구사항
-   {초기 요구사항 정리}
-
-   ## 고려했지만 미반영된 사항
-   (초기 사이클이므로 없음)
-
-   ## 다음 사이클 검토 필요 사항
-   - [ ] {구체화 필요한 항목 1}
-   - [ ] {구체화 필요한 항목 2}
-   ...
-
-   ## 참고 자료
-   (초기 사이클이므로 없음)
-   EOF
-   ```
+3. create_cycle 도구로 cycle_0.md 생성
+   - 템플릿: `skills/refinement/SKILL.md`의 "create_cycle" 섹션 참조
+   - 초기 사이클이므로 `## 참고 자료`는 "(없음)"으로 기재
 
 ### STEP 2: 구체화 사이클 (Cycle 1 ~ n)
 
@@ -130,28 +107,8 @@ python3 tools/validate_spec.py \
 
 **2단계: 의미적 검증 (Subagent, 동기 대기)**
 
-깨끗한 컨텍스트에서 독립적 검증을 위해 Task 도구로 subagent 생성.
-Task는 기본적으로 동기 실행되어 subagent 완료까지 대기 후 결과 반환.
-
-```
-validation_result = Task(
-  subagent_type="general-purpose",
-  prompt="""
-specs/cycle.spec.md의 의미적 명세 기준으로 다음 파일을 검증하세요:
-sessions/{session_id}/cycle_{n}.md
-
-의미적 검증 기준:
-1. 이전 사이클 대비 새로운 정보가 포함되어 있는가?
-2. 사용자 응답 내용이 요구사항에 적절히 반영되었는가?
-3. 본문의 주장/판단에 인용 표시([1], [2] 등)가 있는가?
-4. 인용 표시가 ## 참고 자료의 항목과 매칭되는가?
-5. ## 참고 자료에 출처 URL과 원문 내용이 함께 기록되어 있는가?
-
-JSON으로 결과 반환: {"valid": bool, "issues": [...], "suggestions": [...]}
-"""
-)
-# validation_result로 통과/실패 판단
-```
+`skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조하여 Subagent 호출.
+검증 기준은 `specs/cycle.spec.md`의 "의미적 명세" 섹션에 정의됨.
 
 - 실패 시: 피드백 기반 자체 수정 후 2-4 반복 (최대 3회)
 
@@ -173,35 +130,9 @@ max_iterations 도달 시 AskUserQuestion:
 
 ### STEP 4: 최종 결과 생성
 
-1. create_result 도구로 result.md 생성:
-   ```bash
-   cat << 'EOF' | python3 tools/create_result.py \
-     --session-id "$SESSION_ID" \
-     --cycles "cycle_0.md,cycle_1.md,..."
-   # 최종 요구사항
-
-   ## 개요
-   {핵심 요구사항 요약}
-
-   ## 상세 요구사항
-   {구체화된 전체 요구사항, 인용 표시 포함 [1], [2]}
-
-   ## 고려했지만 미반영된 사항
-   {논의되었으나 제외된 항목들과 이유}
-
-   ## 구체화 히스토리
-   - Cycle 0: 초기 요구사항
-   - Cycle 1: {주요 구체화 내용}
-   ...
-
-   ## 참고 자료
-   [1] {출처 제목}
-   - URL: {URL}
-   - 원문: "{인용된 원문 내용}"
-
-   [2] ...
-   EOF
-   ```
+1. create_result 도구로 result.md 생성
+   - 템플릿: `skills/refinement/SKILL.md`의 "create_result" 섹션 참조
+   - 모든 cycle의 참고 자료를 통합하여 `## 참고 자료`에 기재
 
 2. [Hook 자동 실행: fast-fail-check.sh]
 
@@ -213,26 +144,9 @@ max_iterations 도달 시 AskUserQuestion:
      --spec-type "result"
    ```
 
-4. 의미적 검증 (Subagent, 동기 대기):
-   ```
-   validation_result = Task(
-     subagent_type="general-purpose",
-     prompt="""
-   specs/result.spec.md의 의미적 명세 기준으로 다음 파일을 검증하세요:
-   sessions/{session_id}/result.md
-
-   의미적 검증 기준:
-   1. 개요와 상세 요구사항의 일관성
-   2. 실행 가능한 수준의 구체성
-   3. 본문의 주장/판단에 인용 표시([1], [2] 등)가 있는가?
-   4. 인용 표시가 ## 참고 자료의 항목과 매칭되는가?
-   5. ## 참고 자료에 출처 URL과 원문 내용이 함께 기록되어 있는가?
-
-   JSON으로 결과 반환: {"valid": bool, "issues": [...], "suggestions": [...]}
-   """
-   )
-   # validation_result로 통과/실패 판단
-   ```
+4. 의미적 검증 (Subagent):
+   `skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조.
+   검증 기준은 `specs/result.spec.md`의 "의미적 명세" 섹션에 정의됨.
 
 5. 실패 시 자체 수정 (최대 3회)
 

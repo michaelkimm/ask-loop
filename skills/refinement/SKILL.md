@@ -19,16 +19,23 @@ python3 tools/validate_spec.py \
 
 ## 의미적 검증 (Subagent)
 
-깨끗한 컨텍스트에서 독립적 검증을 위해 Task 도구로 subagent 생성:
+깨끗한 컨텍스트에서 독립적 검증을 위해 Task 도구로 subagent 생성.
+Task는 동기 실행되어 완료까지 대기 후 결과 반환.
 
 ```
-Task(
+validation_result = Task(
   subagent_type="general-purpose",
-  prompt="specs/{type}.spec.md의 의미적 명세 기준으로 sessions/{id}/{file}을 검증. JSON 반환: {valid, issues, suggestions}"
+  prompt="""
+1. specs/{type}.spec.md 파일을 읽고 "의미적 명세" 섹션의 검증 기준을 파악
+2. sessions/{session_id}/{file}을 읽고 해당 기준으로 검증
+3. JSON으로 결과 반환: {"valid": bool, "issues": [...], "suggestions": [...]}
+"""
 )
 ```
 
-**장점:** 작성한 컨텍스트와 분리되어 편향 없는 객관적 검증 가능
+**장점:**
+- 작성 컨텍스트와 분리되어 편향 없는 객관적 검증
+- 검증 기준이 specs/*.spec.md에 단일 소스로 관리됨
 
 ## create_cycle
 
