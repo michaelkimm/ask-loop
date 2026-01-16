@@ -9,19 +9,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 핵심 명령어
 
 ```bash
+# 세션 ID 생성
+SESSION_ID=$(date +"%Y%m%d_%H%M%S")
+
 # Cycle 파일 생성 (stdin으로 콘텐츠 전달)
-cat << 'EOF' | python3 tools/create_cycle.py --session-id "YYYYMMDD_HHmmss" --cycle-number N
+cat << 'EOF' | python3 tools/create_cycle.py --session-id "$SESSION_ID" --cycle-number N
 ...콘텐츠...
 EOF
 
 # Result 파일 생성
-cat << 'EOF' | python3 tools/create_result.py --session-id "ID" --cycles "cycle_0.md,cycle_1.md"
+cat << 'EOF' | python3 tools/create_result.py --session-id "$SESSION_ID" --cycles "cycle_0.md,cycle_1.md"
 ...콘텐츠...
 EOF
 
-# 구조적 검증 (의미적 검증은 Subagent로 별도 수행)
-python3 tools/validate_spec.py --session-id "ID" --target-file "cycle_1.md" --spec-type cycle
+# 구조적 검증
+python3 tools/validate_spec.py --session-id "$SESSION_ID" --target-file "cycle_1.md" --spec-type cycle
 ```
+
+## 의미적 검증
+
+구조적 검증 후 Task(subagent)로 의미적 검증 수행. `skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조.
 
 ## 아키텍처
 
