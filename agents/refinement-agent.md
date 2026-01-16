@@ -6,7 +6,7 @@
 
 ```
 1. 이전 cycle 파일 하나만 읽음 (컨텍스트 최소화)
-2. 새로 언급된 기술만 MCP로 조사
+2. 미조사 기술만 MCP로 조사 (중복 조사 방지)
 3. 충분성 판단을 질문 전에 수행
 4. 충분하면 질문 없이 STEP 4로 직행 가능
 ```
@@ -31,29 +31,9 @@ investigated_techs = set()
 
 2. 사용자 응답 수신
 
-3. create_cycle 도구로 cycle_0.md 생성:
-   ```bash
-   cat << 'EOF' | python3 tools/create_cycle.py --session-id "$SESSION_ID" --cycle-number 0
-   # 요구사항 구체화 - Cycle 0
-
-   ## 이번 사이클 질문
-   초기 요구사항을 입력해주세요.
-
-   ## 사용자 응답
-   {사용자가 입력한 초기 요구사항}
-
-   ## 현재까지 구체화된 요구사항
-   {초기 요구사항 정리}
-
-   ## 고려했지만 미반영된 사항
-   (초기 사이클이므로 없음)
-
-   ## 다음 사이클 검토 필요 사항
-   - [ ] {구체화 필요한 항목 1}
-   - [ ] {구체화 필요한 항목 2}
-   ...
-   EOF
-   ```
+3. create_cycle 도구로 cycle_0.md 생성
+   - 템플릿: `skills/refinement/SKILL.md`의 "create_cycle" 섹션 참조
+   - 초기 사이클이므로 `## 참고 자료`는 "(없음)"으로 기재
 
 ### STEP 2: 구체화 사이클 (Cycle 1 ~ n)
 
@@ -65,14 +45,15 @@ investigated_techs = set()
    - 전체 히스토리가 아닌 직전 파일만 참조
    - 컨텍스트 비대화 방지
 
-2. **새로운 기술 스택 추출**
-   - 이전 cycle에서 새로 언급된 기술 식별
-   - `investigated_techs`에 없는 것만 조사
+2. **미조사 기술 식별**
+   - 이전 cycle에서 언급된 기술 중 아직 조사하지 않은 것 식별
+   - `investigated_techs`에 이미 있는 기술은 건너뜀
 
-3. **MCP 조건부 호출** (새 기술만)
+3. **MCP 조건부 호출** (미조사 기술만)
    ```python
-   new_techs = extract_techs(previous_cycle) - investigated_techs
-   for tech in new_techs:
+   mentioned_techs = extract_techs(previous_cycle)
+   uninvestigated = mentioned_techs - investigated_techs  # 중복 조사 방지
+   for tech in uninvestigated:
        # Context7: 공식 문서 조회
        # Grep.app: 구현 패턴 검색
        # Exa: 최신 트렌드, 주의사항
@@ -117,12 +98,18 @@ investigated_techs = set()
 
 #### 2-5. 명세 검증
 
+**1단계: 구조적 검증 (도구)**
 ```bash
 python3 tools/validate_spec.py \
   --session-id "$SESSION_ID" \
   --target-file "cycle_${n}.md" \
   --spec-type "cycle"
 ```
+
+**2단계: 의미적 검증 (Subagent, 동기 대기)**
+
+`skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조하여 Subagent 호출.
+검증 기준은 `specs/cycle.spec.md`의 "의미적 명세" 섹션에 정의됨.
 
 - 실패 시: 피드백 기반 자체 수정 후 2-4 반복 (최대 3회)
 
@@ -144,32 +131,13 @@ max_iterations 도달 시 AskUserQuestion:
 
 ### STEP 4: 최종 결과 생성
 
-1. create_result 도구로 result.md 생성:
-   ```bash
-   cat << 'EOF' | python3 tools/create_result.py \
-     --session-id "$SESSION_ID" \
-     --cycles "cycle_0.md,cycle_1.md,..."
-   # 최종 요구사항
-
-   ## 개요
-   {핵심 요구사항 요약}
-
-   ## 상세 요구사항
-   {구체화된 전체 요구사항}
-
-   ## 고려했지만 미반영된 사항
-   {논의되었으나 제외된 항목들과 이유}
-
-   ## 구체화 히스토리
-   - Cycle 0: 초기 요구사항
-   - Cycle 1: {주요 구체화 내용}
-   ...
-   EOF
-   ```
+1. create_result 도구로 result.md 생성
+   - 템플릿: `skills/refinement/SKILL.md`의 "create_result" 섹션 참조
+   - 모든 cycle의 참고 자료를 통합하여 `## 참고 자료`에 기재
 
 2. [Hook 자동 실행: fast-fail-check.sh]
 
-3. validate_spec 도구로 검증:
+3. 구조적 검증:
    ```bash
    python3 tools/validate_spec.py \
      --session-id "$SESSION_ID" \
@@ -177,9 +145,13 @@ max_iterations 도달 시 AskUserQuestion:
      --spec-type "result"
    ```
 
-4. 실패 시 자체 수정 (최대 3회)
+4. 의미적 검증 (Subagent):
+   `skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조.
+   검증 기준은 `specs/result.spec.md`의 "의미적 명세" 섹션에 정의됨.
 
-5. 사용자에게 완료 알림
+5. 실패 시 자체 수정 (최대 3회)
+
+6. 사용자에게 완료 알림
 
 ## 질문 생성 가이드라인
 
@@ -212,23 +184,33 @@ JWT 기반 인증을 사용하고, Google 소셜 로그인만 지원하면 됩�
 ## 현재까지 구체화된 요구사항
 
 ### 이벤트 시스템
-- Kafka 사용
-- acks=all, 파티션 3개
+- Kafka 사용 [1]
+- acks=all, 파티션 3개 (권장 설정) [1]
 
 ### 인증 시스템
-- 방식: JWT 기반 인증
-- 토큰 만료: 24시간
+- 방식: JWT 기반 인증 [2]
+- 토큰 만료: 24시간 (보안과 UX 균형) [2]
 - 소셜 로그인: Google OAuth2.0
 
 ## 고려했지만 미반영된 사항
 
 - **Schema Registry**: 사용자가 "아직 불필요"라고 답변
 - **GitHub 소셜 로그인**: Google만 필요하다고 판단
-- **Refresh Token**: 사용자가 단순 구현 선호
+- **Refresh Token**: 사용자가 단순 구현 선호 [2]
 
 ## 다음 사이클 검토 필요 사항
 
 - [ ] 권한 관리 체계 (RBAC vs ABAC)
 - [ ] 에러 처리 방식
 - [ ] 로깅 전략
+
+## 참고 자료
+
+[1] Kafka 공식 문서 - Producer Configs
+- URL: https://kafka.apache.org/documentation/#producerconfigs
+- 원문: "acks=all: the leader will wait for the full set of in-sync replicas to acknowledge the record."
+
+[2] Auth0 - JWT Best Practices
+- URL: https://auth0.com/blog/jwt-handbook/
+- 원문: "For access tokens, 15 minutes to 1 hour is common. For longer sessions, use refresh tokens with shorter-lived access tokens."
 ```

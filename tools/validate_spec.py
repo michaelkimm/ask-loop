@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 출력물이 명세를 준수하는지 검증합니다.
-구조적 검증은 결정론적으로, 의미적 검증은 LLM을 통해 수행합니다.
+구조적 검증은 결정론적으로 수행하고, 의미적 검증은 Refinement Agent가 직접 수행합니다.
 
 사용법:
     python3 tools/validate_spec.py --session-id "20250116_143052" --target-file "cycle_1.md" --spec-type "cycle"
 
 Exit 코드:
     0: 검증 통과
-    1: 비차단 오류 (API 미사용 가능 등)
     2: 차단 오류 (명세 위반)
 """
 import argparse
@@ -32,7 +31,8 @@ def validate_cycle_structural(content: str) -> list[str]:
         '## 사용자 응답',
         '## 현재까지 구체화된 요구사항',
         '## 고려했지만 미반영된 사항',
-        '## 다음 사이클 검토 필요 사항'
+        '## 다음 사이클 검토 필요 사항',
+        '## 참고 자료'
     ]
     for section in required_sections:
         if section not in content:
@@ -58,7 +58,8 @@ def validate_result_structural(content: str) -> list[str]:
         '## 개요',
         '## 상세 요구사항',
         '## 고려했지만 미반영된 사항',
-        '## 구체화 히스토리'
+        '## 구체화 히스토리',
+        '## 참고 자료'
     ]
     for section in required_sections:
         if section not in content:
@@ -72,75 +73,12 @@ def validate_result_structural(content: str) -> list[str]:
 
 
 def validate_semantic(content: str, spec_type: str, spec_content: str) -> dict:
-    """의미적 검증 (LLM 호출)"""
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        return {
-            'valid': False,
-            'error': 'anthropic 패키지가 설치되지 않았습니다. pip install anthropic 실행 필요'
-        }
-
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
-    if not api_key:
-        return {
-            'valid': False,
-            'error': 'ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다'
-        }
-
-    client = Anthropic(api_key=api_key)
-
-    if spec_type == 'cycle':
-        semantic_criteria = """
-의미적 검증 기준:
-1. 이전 사이클 대비 새로운 정보가 포함되어 있는가?
-2. 사용자 응답 내용이 요구사항에 적절히 반영되었는가?
-3. 질문이 요구사항 구체화에 도움이 되는 내용인가?
-"""
-    else:  # result
-        semantic_criteria = """
-의미적 검증 기준:
-1. 개요와 상세 요구사항이 일관성 있게 작성되었는가?
-2. 실행 가능한 수준의 구체성을 갖추었는가?
-3. 구체화 과정에서 논의된 내용이 적절히 반영되었는가?
-"""
-
-    prompt = f"""당신은 명세 검증기입니다. 문서가 명세 요구사항을 충족하는지 분석하세요.
-
-명세:
-{spec_content}
-
-{semantic_criteria}
-
-검증할 문서:
-{content}
-
-JSON 형식으로만 응답하세요:
-{{
-  "valid": true 또는 false,
-  "issues": ["위반 사항 목록 (있는 경우)"],
-  "quality_score": 1-10 점수,
-  "suggestions": ["개선 제안 (선택사항)"]
-}}"""
-
-    try:
-        message = client.messages.create(
-            model="claude-opus-4-5-20251101",
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        response_text = message.content[0].text
-
-        # JSON 추출 (코드 블록 안에 있을 수 있음)
-        json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            return json.loads(json_match.group())
-        else:
-            return {'valid': False, 'error': 'LLM 응답에서 JSON을 파싱할 수 없습니다'}
-
-    except Exception as e:
-        return {'valid': False, 'error': f'API 호출 실패: {str(e)}'}
+    """의미적 검증 - Refinement Agent(Claude Code)가 직접 수행"""
+    return {
+        'valid': True,
+        'skipped': True,
+        'message': '의미적 검증은 Refinement Agent가 직접 수행합니다. specs/*.spec.md 참조.'
+    }
 
 
 def main():
@@ -212,8 +150,11 @@ def main():
         sys.exit(0)
 
     # 의미적 검증
-    print("의미적 검증 수행 중...")
     result = validate_semantic(content, args.spec_type, spec_content)
+
+    if result.get('skipped'):
+        print(f"의미적 검증: {result.get('message')}")
+        sys.exit(0)
 
     if result.get('error'):
         print(f"의미적 검증 오류: {result['error']}", file=sys.stderr)
@@ -226,11 +167,6 @@ def main():
         sys.exit(2)
 
     print(f"의미적 검증 통과 (품질 점수: {result.get('quality_score', 'N/A')}/10)")
-
-    if result.get('suggestions'):
-        print("개선 제안:")
-        for suggestion in result['suggestions']:
-            print(f"  - {suggestion}")
 
 
 if __name__ == '__main__':
