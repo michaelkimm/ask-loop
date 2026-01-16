@@ -19,11 +19,8 @@ cat << 'EOF' | python3 tools/create_result.py --session-id "ID" --cycles "cycle_
 ...콘텐츠...
 EOF
 
-# 명세 검증 (구조적만, 빠름)
-python3 tools/validate_spec.py --session-id "ID" --target-file "cycle_1.md" --spec-type cycle --structural-only
-
-# 명세 검증 (구조적 + 의미적, LLM 호출)
-python3 tools/validate_spec.py --session-id "ID" --target-file "result.md" --spec-type result
+# 구조적 검증 (의미적 검증은 Subagent로 별도 수행)
+python3 tools/validate_spec.py --session-id "ID" --target-file "cycle_1.md" --spec-type cycle
 ```
 
 ## 아키텍처
@@ -37,7 +34,7 @@ Refinement Agent (단일 에이전트)
     ├── tools/
     │   ├── create_cycle.py    # stdin → sessions/{id}/cycle_{n}.md
     │   ├── create_result.py   # stdin → sessions/{id}/result.md
-    │   └── validate_spec.py   # 구조적 + 의미적(LLM) 검증
+    │   └── validate_spec.py   # 구조적 검증 (의미적은 Subagent)
     │
     ├── specs/                 # 검증 기준 정의
     │   ├── cycle.spec.md      # 필수 섹션, 최소 200자
@@ -51,6 +48,7 @@ Refinement Agent (단일 에이전트)
 1. **이전 cycle 파일 하나만 읽음** - 컨텍스트 최소화
 2. **새로 언급된 기술만 MCP로 조사** - 중복 조사 방지
 3. **충분성 판단을 질문 전에 수행** - 충분하면 STEP 4로 직행
+4. **인용 시스템 필수** - 주장에 [1], [2] 표시 + `## 참고 자료`에 URL/원문 기록
 
 ## 워크플로우
 
@@ -60,8 +58,6 @@ Refinement Agent (단일 에이전트)
 ## 환경 설정
 
 ```bash
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY="..."      # validate_spec 의미적 검증용
-export EXA_API_KEY="..."            # Exa MCP용 (선택)
 chmod +x scripts/*.sh tools/*.py
+export EXA_API_KEY="..."            # Exa MCP용 (선택)
 ```

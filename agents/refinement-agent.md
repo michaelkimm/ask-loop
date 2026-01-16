@@ -52,6 +52,9 @@ investigated_techs = set()
    - [ ] {구체화 필요한 항목 1}
    - [ ] {구체화 필요한 항목 2}
    ...
+
+   ## 참고 자료
+   (초기 사이클이므로 없음)
    EOF
    ```
 
@@ -117,11 +120,37 @@ investigated_techs = set()
 
 #### 2-5. 명세 검증
 
+**1단계: 구조적 검증 (도구)**
 ```bash
 python3 tools/validate_spec.py \
   --session-id "$SESSION_ID" \
   --target-file "cycle_${n}.md" \
   --spec-type "cycle"
+```
+
+**2단계: 의미적 검증 (Subagent, 동기 대기)**
+
+깨끗한 컨텍스트에서 독립적 검증을 위해 Task 도구로 subagent 생성.
+Task는 기본적으로 동기 실행되어 subagent 완료까지 대기 후 결과 반환.
+
+```
+validation_result = Task(
+  subagent_type="general-purpose",
+  prompt="""
+specs/cycle.spec.md의 의미적 명세 기준으로 다음 파일을 검증하세요:
+sessions/{session_id}/cycle_{n}.md
+
+의미적 검증 기준:
+1. 이전 사이클 대비 새로운 정보가 포함되어 있는가?
+2. 사용자 응답 내용이 요구사항에 적절히 반영되었는가?
+3. 본문의 주장/판단에 인용 표시([1], [2] 등)가 있는가?
+4. 인용 표시가 ## 참고 자료의 항목과 매칭되는가?
+5. ## 참고 자료에 출처 URL과 원문 내용이 함께 기록되어 있는가?
+
+JSON으로 결과 반환: {"valid": bool, "issues": [...], "suggestions": [...]}
+"""
+)
+# validation_result로 통과/실패 판단
 ```
 
 - 실패 시: 피드백 기반 자체 수정 후 2-4 반복 (최대 3회)
@@ -155,7 +184,7 @@ max_iterations 도달 시 AskUserQuestion:
    {핵심 요구사항 요약}
 
    ## 상세 요구사항
-   {구체화된 전체 요구사항}
+   {구체화된 전체 요구사항, 인용 표시 포함 [1], [2]}
 
    ## 고려했지만 미반영된 사항
    {논의되었으나 제외된 항목들과 이유}
@@ -164,12 +193,19 @@ max_iterations 도달 시 AskUserQuestion:
    - Cycle 0: 초기 요구사항
    - Cycle 1: {주요 구체화 내용}
    ...
+
+   ## 참고 자료
+   [1] {출처 제목}
+   - URL: {URL}
+   - 원문: "{인용된 원문 내용}"
+
+   [2] ...
    EOF
    ```
 
 2. [Hook 자동 실행: fast-fail-check.sh]
 
-3. validate_spec 도구로 검증:
+3. 구조적 검증:
    ```bash
    python3 tools/validate_spec.py \
      --session-id "$SESSION_ID" \
@@ -177,9 +213,30 @@ max_iterations 도달 시 AskUserQuestion:
      --spec-type "result"
    ```
 
-4. 실패 시 자체 수정 (최대 3회)
+4. 의미적 검증 (Subagent, 동기 대기):
+   ```
+   validation_result = Task(
+     subagent_type="general-purpose",
+     prompt="""
+   specs/result.spec.md의 의미적 명세 기준으로 다음 파일을 검증하세요:
+   sessions/{session_id}/result.md
 
-5. 사용자에게 완료 알림
+   의미적 검증 기준:
+   1. 개요와 상세 요구사항의 일관성
+   2. 실행 가능한 수준의 구체성
+   3. 본문의 주장/판단에 인용 표시([1], [2] 등)가 있는가?
+   4. 인용 표시가 ## 참고 자료의 항목과 매칭되는가?
+   5. ## 참고 자료에 출처 URL과 원문 내용이 함께 기록되어 있는가?
+
+   JSON으로 결과 반환: {"valid": bool, "issues": [...], "suggestions": [...]}
+   """
+   )
+   # validation_result로 통과/실패 판단
+   ```
+
+5. 실패 시 자체 수정 (최대 3회)
+
+6. 사용자에게 완료 알림
 
 ## 질문 생성 가이드라인
 
@@ -212,23 +269,33 @@ JWT 기반 인증을 사용하고, Google 소셜 로그인만 지원하면 됩�
 ## 현재까지 구체화된 요구사항
 
 ### 이벤트 시스템
-- Kafka 사용
-- acks=all, 파티션 3개
+- Kafka 사용 [1]
+- acks=all, 파티션 3개 (권장 설정) [1]
 
 ### 인증 시스템
-- 방식: JWT 기반 인증
-- 토큰 만료: 24시간
+- 방식: JWT 기반 인증 [2]
+- 토큰 만료: 24시간 (보안과 UX 균형) [2]
 - 소셜 로그인: Google OAuth2.0
 
 ## 고려했지만 미반영된 사항
 
 - **Schema Registry**: 사용자가 "아직 불필요"라고 답변
 - **GitHub 소셜 로그인**: Google만 필요하다고 판단
-- **Refresh Token**: 사용자가 단순 구현 선호
+- **Refresh Token**: 사용자가 단순 구현 선호 [2]
 
 ## 다음 사이클 검토 필요 사항
 
 - [ ] 권한 관리 체계 (RBAC vs ABAC)
 - [ ] 에러 처리 방식
 - [ ] 로깅 전략
+
+## 참고 자료
+
+[1] Kafka 공식 문서 - Producer Configs
+- URL: https://kafka.apache.org/documentation/#producerconfigs
+- 원문: "acks=all: the leader will wait for the full set of in-sync replicas to acknowledge the record."
+
+[2] Auth0 - JWT Best Practices
+- URL: https://auth0.com/blog/jwt-handbook/
+- 원문: "For access tokens, 15 minutes to 1 hour is common. For longer sessions, use refresh tokens with shorter-lived access tokens."
 ```

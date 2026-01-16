@@ -4,17 +4,9 @@
 
 ## validate_spec
 
-출력물이 명세를 준수하는지 검증합니다.
+출력물이 명세를 준수하는지 **구조적 검증**을 수행합니다.
 
 ```bash
-# 구조적 검증만 (빠름, API 호출 없음)
-python3 tools/validate_spec.py \
-  --session-id "<session_id>" \
-  --target-file "<file_name>" \
-  --spec-type "<cycle|result>" \
-  --structural-only
-
-# 전체 검증 (구조적 + 의미적, API 호출 포함)
 python3 tools/validate_spec.py \
   --session-id "<session_id>" \
   --target-file "<file_name>" \
@@ -23,8 +15,20 @@ python3 tools/validate_spec.py \
 
 **Exit 코드:**
 - `0`: 검증 통과
-- `1`: 비차단 오류 (API 미사용 가능 등)
 - `2`: 차단 오류 (명세 위반, 재시도 필요)
+
+## 의미적 검증 (Subagent)
+
+깨끗한 컨텍스트에서 독립적 검증을 위해 Task 도구로 subagent 생성:
+
+```
+Task(
+  subagent_type="general-purpose",
+  prompt="specs/{type}.spec.md의 의미적 명세 기준으로 sessions/{id}/{file}을 검증. JSON 반환: {valid, issues, suggestions}"
+)
+```
+
+**장점:** 작성한 컨텍스트와 분리되어 편향 없는 객관적 검증 가능
 
 ## create_cycle
 
@@ -43,13 +47,18 @@ cat << 'EOF' | python3 tools/create_cycle.py \
 ...
 
 ## 현재까지 구체화된 요구사항
-...
+... 인용 표시 포함 [1], [2] ...
 
 ## 고려했지만 미반영된 사항
 ...
 
 ## 다음 사이클 검토 필요 사항
 ...
+
+## 참고 자료
+[1] 출처 제목
+- URL: https://...
+- 원문: "인용된 원문 내용"
 EOF
 ```
 
@@ -67,13 +76,18 @@ cat << 'EOF' | python3 tools/create_result.py \
 ...
 
 ## 상세 요구사항
-...
+... 인용 표시 포함 [1], [2] ...
 
 ## 고려했지만 미반영된 사항
 ...
 
 ## 구체화 히스토리
 ...
+
+## 참고 자료
+[1] 출처 제목
+- URL: https://...
+- 원문: "인용된 원문 내용"
 EOF
 ```
 
