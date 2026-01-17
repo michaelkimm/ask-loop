@@ -4,99 +4,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-사용자의 초기 요구사항을 최대 5회의 반복 사이클을 통해 점진적으로 구체화하는 단일 에이전트 시스템입니다. 각 사이클마다 MCP를 통해 기술 조사를 수행하고, 구조적/의미적 검증을 거쳐 품질을 보장합니다.
+MCP 기반 기술 조사로 요구사항을 구체화하는 Claude Code 커맨드 (`/refine`).
 
-## 핵심 명령어
+## 사용법
 
 ```bash
-# 세션 ID 생성
-SESSION_ID=$(date +"%Y%m%d_%H%M%S")
-
-# Cycle 파일 생성 (stdin으로 콘텐츠 전달)
-cat << 'EOF' | python3 tools/create_cycle.py --session-id "$SESSION_ID" --cycle-number N
-...콘텐츠...
-EOF
-
-# Result 파일 생성
-cat << 'EOF' | python3 tools/create_result.py --session-id "$SESSION_ID" --cycles "cycle_0.md,cycle_1.md"
-...콘텐츠...
-EOF
-
-# 구조적 검증
-python3 tools/validate_spec.py --session-id "$SESSION_ID" --target-file "cycle_1.md" --spec-type cycle
+claude
+> /refine path/to/spec.md
 ```
-
-## 검증 체계
-
-### 구조적 검증 (validate_spec.py)
-
-- Exit 0: 통과 / Exit 2: 차단 오류 (재시도 필요)
-- cycle: 필수 섹션 6개 + 최소 200자
-- result: 필수 섹션 5개 + 최소 500자
-
-### 의미적 검증 (Subagent)
-
-구조적 검증 후 Task(subagent_type="general-purpose")로 수행:
-1. `specs/{type}.spec.md`의 "의미적 명세" 섹션 읽기
-2. 대상 파일 검증
-3. JSON 결과 반환: `{"valid": bool, "issues": [...], "suggestions": [...]}`
-
-상세는 `skills/refinement/SKILL.md`의 "의미적 검증" 섹션 참조.
 
 ## 아키텍처
 
 ```
-Refinement Agent (단일 에이전트)
-    │
-    ├── 분석 → 충분성 판단 ─┬─ 충분 → result.md 생성
-    │                      └─ 불충분 → AskUserQuestion → cycle 생성
-    │
-    ├── tools/                 # Python 유틸리티
-    │   ├── create_cycle.py    # stdin → sessions/{id}/cycle_{n}.md
-    │   ├── create_result.py   # stdin → sessions/{id}/result.md
-    │   └── validate_spec.py   # 구조적 검증 (Exit 0/2)
-    │
-    ├── specs/                 # 검증 기준 정의
-    │   ├── cycle.spec.md      # 구조적 + 의미적 명세
-    │   └── result.spec.md     # 구조적 + 의미적 명세
-    │
-    ├── MCP 서버               # 기술 조사용
-    │   ├── Context7           # 공식 문서 조회
-    │   ├── Grep.app           # 코드 패턴 검색
-    │   └── Exa                # 웹 검색 (EXA_API_KEY 필요)
-    │
-    └── Hook: fast-fail-check.sh  # Write 후 자동 실행, 토큰 비용 0
+.claude/commands/refine.md    # /refine 커맨드 정의
+.mcp.json                     # MCP 서버 설정 (Context7, Grep.app, Exa)
 ```
 
-## 핵심 규칙
+## /refine 워크플로우
 
-1. **이전 cycle 파일 하나만 읽음** - 컨텍스트 최소화, 히스토리 전체 읽지 않음
-2. **미조사 기술만 MCP로 조사** - `investigated_techs` 집합으로 중복 방지
-3. **충분성 판단을 질문 전에 수행** - 모든 요건 충족 시 STEP 4로 직행
-4. **인용 시스템 필수** - 주장에 [1], [2] 표시 + `## 참고 자료`에 URL/원문 기록
+1. **요구사항 분석** - 파일에서 기술/개념 식별
+2. **MCP 조사** - 서브에이전트(Task)로 위임하여 컨텍스트 절약
+   - Context7: 공식 문서
+   - Grep.app: 구현 패턴
+   - Exa: 최신 트렌드 (EXA_API_KEY 필요)
+3. **리서치 저장** - `{파일명}-research_summary.md`, `{파일명}-research_detail.md`
+4. **질문** - AskUserQuestion으로 옵션 제시 (모든 질문에 "팀 내부 조사 후 결정" 옵션 포함)
+5. **반영** - 답변을 원본 파일에 덮어쓰기
 
-## 워크플로우
+## 인용 규칙
 
-1. **STEP 1**: 초기 요구사항 확보 → cycle_0.md
-2. **STEP 2**: 분석 → 충분성 판단 → (불충분 시) 질문 → cycle_n.md → 검증
-3. **STEP 3**: max_iterations 도달 시 추가 반복 확인
-4. **STEP 4**: result.md 생성 → 검증 → 완료
+MCP로 조사한 내용만 출처 표시. 추론은 표시 안 함.
 
-상세 워크플로우와 출력물 예시는 `agents/refinement-agent.md` 참조.
+```markdown
+JWT는 stateless라서 확장이 용이하다[1].
 
-## 출력물 구조
-
+## 참고 자료
+[1] https://auth0.com/..., "JWTs are stateless..."
 ```
-sessions/{YYYYMMDD_HHMMSS}/
-├── cycle_0.md    # 초기 요구사항
-├── cycle_1.md    # 1차 구체화
-├── ...
-└── result.md     # 최종 요구사항 문서
-```
+
+## 출력 형식
+
+`/refine` 결과물에는 반드시 포함:
+- `## 미결정 사항` > `### 사전 조사 필요` - "팀 내부 조사 후 결정" 답변 항목
+- `## 미결정 사항` > `### 조사 후 결정 필요` - 위 조사에 의존하는 결정
 
 ## 환경 설정
 
 ```bash
-chmod +x scripts/*.sh tools/*.py
-export EXA_API_KEY="..."            # Exa MCP용 (선택)
+export EXA_API_KEY="..."  # Exa MCP용 (선택)
 ```
